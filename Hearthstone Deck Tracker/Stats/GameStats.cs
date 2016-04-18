@@ -57,6 +57,7 @@ namespace Hearthstone_Deck_Tracker.Stats
 			PlayerHero = playerHero;
 			StartTime = DateTime.Now;
 			GameId = Guid.NewGuid();
+			HearthstoneBuild = Helper.GetHearthstoneBuild();
 		}
 
 		//playerhero does not get loaded from xml for some reason
@@ -174,6 +175,8 @@ namespace Hearthstone_Deck_Tracker.Stats
 
 		public int OpponentRank { get; set; }
 
+		public int? HearthstoneBuild { get; set; }
+		
 		public Region Region
 		{
 			get { return _region; }
@@ -356,6 +359,7 @@ namespace Hearthstone_Deck_Tracker.Stats
 				ReplayFile = ReplayFile,
 				WasConceded = WasConceded,
 				PlayerDeckVersion = PlayerDeckVersion,
+				HearthstoneBuild = HearthstoneBuild,
 				IsClone = true
 			};
 			return newGame;
