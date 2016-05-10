@@ -76,7 +76,7 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 				case GameMode.Friendly:
 					return BGT_FRIENDS;
 				case GameMode.Practice:
-					return BGT_UNKNOWN;
+					return BGT_VS_AI;
 				default:
 					return BGT_UNKNOWN;
 			}
