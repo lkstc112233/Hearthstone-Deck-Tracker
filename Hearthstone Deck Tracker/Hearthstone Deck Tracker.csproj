@@ -312,6 +312,7 @@
     <Compile Include="DeckManager.cs" />
     <Compile Include="Hearthstone\DeckState.cs" />
     <Compile Include="Hearthstone\PredictedCard.cs" />
+    <Compile Include="HsReplay\API\UploadMetaData.cs" />
     <Compile Include="Importing\Websites\Manacrystals.cs" />
     <Compile Include="HsReplay\Account.cs" />
     <Compile Include="LogReader\Handlers\FullScreenFxHandler.cs" />
