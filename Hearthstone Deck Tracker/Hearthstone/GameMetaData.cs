@@ -1,33 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System;
+using HearthMirror.Objects;
 
 namespace Hearthstone_Deck_Tracker.Hearthstone
 {
-	public class GameMetaData
+	public class GameMetaData : ICloneable
 	{
-		private int? _propagatedLegendRank;
 		private int? _hearthstoneBuild;
-		private int _legendRank;
-		public string ServerAddress { get; set; }
-		public string ClientId { get; set; }
-		public string GameId { get; set; }
-		public string SpectateKey { get; set; }
+		public GameServerInfo ServerInfo;
 		public DateTime EnqueueTime { get; set; }
-
-		public int LegendRank
-		{
-			get { return _propagatedLegendRank ?? _legendRank; }
-			set { _legendRank = value; }
-		}
-		
-		internal void PropagateLegendRank()
-		{
-			if(_legendRank > 0)
-				_propagatedLegendRank = _legendRank;
-		}
+		public bool Reconnected { get; set; }
 
 		public int? HearthstoneBuild
 		{
@@ -42,6 +23,15 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		}
 
 		public override string ToString() 
-			=> $"HearthstoneBuild={HearthstoneBuild}, ServerAddress={ServerAddress}, ClientId={ClientId}, GameId={GameId}, SpectateKey={SpectateKey}, LegendRank={LegendRank}, EnqueueTime={EnqueueTime}";
+			=> $"HearthstoneBuild={HearthstoneBuild}, ServerAddress={ServerInfo?.Address}, ClientId={ServerInfo?.ClientHandle}, GameId={ServerInfo?.GameHandle}, EnqueueTime={EnqueueTime}";
+
+		public object Clone() => new GameMetaData
+		{
+			_hearthstoneBuild = _hearthstoneBuild,
+			EnqueueTime = EnqueueTime,
+			HearthstoneBuild = HearthstoneBuild,
+			Reconnected = Reconnected,
+			ServerInfo = ServerInfo
+		};
 	}
 }

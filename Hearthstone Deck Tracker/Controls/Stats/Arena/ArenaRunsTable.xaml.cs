@@ -1,15 +1,13 @@
-﻿#region
+#region
 
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
-using Hearthstone_Deck_Tracker.HearthStats.API;
-using Hearthstone_Deck_Tracker.Replay;
+using Hearthstone_Deck_Tracker.HsReplay;
 using Hearthstone_Deck_Tracker.Stats;
 using Hearthstone_Deck_Tracker.Stats.CompiledStats;
-using Hearthstone_Deck_Tracker.Utility.Extensions;
 using Hearthstone_Deck_Tracker.Utility.Logging;
 using Hearthstone_Deck_Tracker.Windows;
 using MahApps.Metro.Controls.Dialogs;
@@ -88,32 +86,37 @@ namespace Hearthstone_Deck_Tracker.Controls.Stats.Arena
 				return;
 			if(run.Deck.DeckStats.Games.Contains(SelectedGame))
 			{
-				SelectedGame.DeleteGameFile();
 				run.Deck.DeckStats.Games.Remove(SelectedGame);
 				Log.Info("Deleted game " + SelectedGame);
 			}
-			if(HearthStatsAPI.IsLoggedIn && SelectedGame.HasHearthStatsId && await window.ShowCheckHearthStatsMatchDeletionDialog())
-				HearthStatsManager.DeleteMatchesAsync(new List<GameStats> {SelectedGame}).Forget();
 			DeckStatsList.Save();
 			Core.MainWindow.DeckPickerList.UpdateDecks();
 			ArenaStats.Instance.UpdateArenaStats();
 		}
 
-		private void ButtonShowReplay_OnClick(object sender, RoutedEventArgs e)
+		private async void ButtonShowReplay_OnClick(object sender, RoutedEventArgs e)
 		{
-			if(SelectedGame == null)
+			var game = SelectedGame;
+			if(game == null)
 				return;
-			if(SelectedGame.HasReplayFile)
-				ReplayReader.LaunchReplayViewer(SelectedGame.ReplayFile);
+			await ReplayLauncher.ShowReplay(game, true);
+			game.UpdateReplayState();
 		}
 
 		private void ButtonShowOppDeck_OnClick(object sender, RoutedEventArgs e)
 		{
 			if(SelectedGame == null)
 				return;
-			Core.MainWindow.DeckFlyout.SetDeck(SelectedGame.OpponentCards);
-			Core.MainWindow.FlyoutDeck.Header = "Opponent";
-			Core.MainWindow.FlyoutDeck.IsOpen = true;
+			if(Config.Instance.StatsInWindow)
+			{
+				Core.Windows.StatsWindow.DeckFlyout.SetDeck(SelectedGame.OpponentCards);
+				Core.Windows.StatsWindow.FlyoutDeck.IsOpen = true;
+			}
+			else
+			{
+				Core.MainWindow.DeckFlyout.SetDeck(SelectedGame.OpponentCards);
+				Core.MainWindow.FlyoutDeck.IsOpen = true;
+			}
 		}
 
 		//http://stackoverflow.com/questions/3498686/wpf-remove-scrollviewer-from-treeview

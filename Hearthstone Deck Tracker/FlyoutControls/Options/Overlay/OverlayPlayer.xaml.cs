@@ -69,35 +69,37 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options.Overlay
 			ComboBoxCthun.SelectedItem = Config.Instance.PlayerCthunCounter;
 			ComboBoxSpells.ItemsSource = Enum.GetValues(typeof(DisplayMode)).Cast<DisplayMode>();
 			ComboBoxSpells.SelectedItem = Config.Instance.PlayerSpellsCounter;
+			ComboBoxJade.ItemsSource = Enum.GetValues(typeof(DisplayMode)).Cast<DisplayMode>();
+			ComboBoxJade.SelectedItem = Config.Instance.PlayerJadeCounter;
 
 			ElementSorterPlayer.IsPlayer = true;
-			foreach(var itemName in Config.Instance.PanelOrderPlayer)
+			foreach(var panel in Config.Instance.DeckPanelOrderPlayer)
 			{
-				switch(itemName)
+				switch(panel)
 				{
-					case "Deck Title":
-						ElementSorterPlayer.AddItem(new ElementSorterItem("Deck Title", Config.Instance.ShowDeckTitle,
-						                                                  value => Config.Instance.ShowDeckTitle = value, true));
+					case Enums.DeckPanel.Cards:
+						ElementSorterPlayer.AddItem(new ElementSorterItem(panel, !Config.Instance.HidePlayerCards,
+																		  value => Config.Instance.HidePlayerCards = !value, true));
 						break;
-					case "Cards":
-						ElementSorterPlayer.AddItem(new ElementSorterItem("Cards", !Config.Instance.HidePlayerCards,
-						                                                  value => Config.Instance.HidePlayerCards = !value, true));
+					case Enums.DeckPanel.CardCounter:
+						ElementSorterPlayer.AddItem(new ElementSorterItem(panel, !Config.Instance.HidePlayerCardCount,
+																		  value => Config.Instance.HidePlayerCardCount = !value, true));
 						break;
-					case "Card Counter":
-						ElementSorterPlayer.AddItem(new ElementSorterItem("Card Counter", !Config.Instance.HidePlayerCardCount,
-						                                                  value => Config.Instance.HidePlayerCardCount = !value, true));
+					case Enums.DeckPanel.DrawChances:
+						ElementSorterPlayer.AddItem(new ElementSorterItem(panel, !Config.Instance.HideDrawChances,
+																		  value => Config.Instance.HideDrawChances = !value, true));
 						break;
-					case "Fatigue Counter":
-						ElementSorterPlayer.AddItem(new ElementSorterItem("Fatigue Counter", !Config.Instance.HidePlayerFatigueCount,
-						                                                  value => Config.Instance.HidePlayerFatigueCount = !value, true));
+					case Enums.DeckPanel.Fatigue:
+						ElementSorterPlayer.AddItem(new ElementSorterItem(panel, !Config.Instance.HidePlayerFatigueCount,
+																		  value => Config.Instance.HidePlayerFatigueCount = !value, true));
 						break;
-					case "Draw Chances":
-						ElementSorterPlayer.AddItem(new ElementSorterItem("Draw Chances", !Config.Instance.HideDrawChances,
-						                                                  value => Config.Instance.HideDrawChances = !value, true));
+					case Enums.DeckPanel.DeckTitle:
+						ElementSorterPlayer.AddItem(new ElementSorterItem(panel, Config.Instance.ShowDeckTitle,
+																		  value => Config.Instance.ShowDeckTitle = value, true));
 						break;
-					case "Wins":
-						ElementSorterPlayer.AddItem(new ElementSorterItem("Wins", Config.Instance.ShowDeckWins,
-						                                                  value => Config.Instance.ShowDeckWins = value, true));
+					case Enums.DeckPanel.Wins:
+						ElementSorterPlayer.AddItem(new ElementSorterItem(panel, Config.Instance.ShowDeckWins,
+																		  value => Config.Instance.ShowDeckWins = value, true));
 						break;
 				}
 			}
@@ -251,6 +253,14 @@ namespace Hearthstone_Deck_Tracker.FlyoutControls.Options.Overlay
 			if(!_initialized)
 				return;
 			Config.Instance.PlayerSpellsCounter = (DisplayMode)ComboBoxSpells.SelectedItem;
+			Config.Save();
+		}
+
+		private void ComboBoxJade_SelectionChanged(object sender, SelectionChangedEventArgs e)
+		{
+			if (!_initialized)
+				return;
+			Config.Instance.PlayerJadeCounter = (DisplayMode)ComboBoxJade.SelectedItem;
 			Config.Save();
 		}
 

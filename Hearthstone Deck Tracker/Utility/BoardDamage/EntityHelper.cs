@@ -21,8 +21,8 @@ namespace Hearthstone_Deck_Tracker.Utility.BoardDamage
 		{
 			if(!forPlayer)
 				id = (id % 2) + 1;
-			var heros = entities.Where(x => IsHero(x.Value)).Select(x => x.Value).ToList();
-			return heros.FirstOrDefault(x => x.GetTag(CONTROLLER) == id);
+			var heroes = entities.Where(x => IsHero(x.Value)).Select(x => x.Value).ToList();
+			return heroes.FirstOrDefault(x => x.GetTag(CONTROLLER) == id);
 		}
 
 		public static bool IsPlayersTurn() => IsPlayersTurn(Core.Game.Entities);
@@ -34,8 +34,10 @@ namespace Hearthstone_Deck_Tracker.Utility.BoardDamage
 			{
 				var offset = firstPlayer.IsPlayer ? 0 : 1;
 				var gameRoot = entities.FirstOrDefault(e => e.Value != null && e.Value.Name == "GameEntity").Value;
-				if(gameRoot != null)
-					return (gameRoot.Tags[TURN] + offset) % 2 == 1;
+				if(gameRoot == null)
+					return false;
+				var turn = gameRoot.GetTag(TURN);
+				return turn > 0 && ((turn + offset)%2 == 1);
 			}
 			return false;
 		}

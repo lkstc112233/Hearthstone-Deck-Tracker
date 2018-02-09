@@ -1,19 +1,22 @@
 ﻿#region
 
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Media.Imaging;
-using Hearthstone_Deck_Tracker.Exporting;
 using Hearthstone_Deck_Tracker.Hearthstone;
 using Hearthstone_Deck_Tracker.Utility.Extensions;
 using Hearthstone_Deck_Tracker.Utility.Logging;
 using MahApps.Metro.Controls.Dialogs;
+using static MahApps.Metro.Controls.Dialogs.MessageDialogStyle;
 using Clipboard = System.Windows.Clipboard;
+using System.Collections.Generic;
+using HearthDb;
+using HearthDb.Enums;
+using Hearthstone_Deck_Tracker.Utility;
+using Hearthstone_Deck_Tracker.Controls.Error;
 
 #endregion
 
@@ -21,70 +24,25 @@ namespace Hearthstone_Deck_Tracker.Windows
 {
 	public partial class MainWindow
 	{
-		private void BtnExport_Click(object sender, RoutedEventArgs e)
+		public void ShowExportFlyout(Deck deck)
+		{
+			DeckExportFlyout.Deck = deck.GetSelectedDeckVersion();
+			FlyoutDeckExport.IsOpen = true;
+		}
+
+		public void ShowScreenshotFlyout()
+		{
+			DeckScreenshotFlyout.Deck = DeckPickerList.SelectedDecks.FirstOrDefault() ?? DeckList.Instance.ActiveDeck;
+			FlyoutDeckScreenshot.IsOpen = true;
+		}
+
+		public void ShowDeckHistoryFlyout()
 		{
 			var deck = DeckPickerList.SelectedDecks.FirstOrDefault() ?? DeckList.Instance.ActiveDeck;
-			if(deck == null)
+			if(!deck?.HasVersions ?? true)
 				return;
-			ExportDeck(deck);
-		}
-
-		private async void ExportDeck(Deck deck)
-		{
-			var export = true;
-			if(Config.Instance.ShowExportingDialog)
-			{
-				var message =
-					$"1) create a new {deck.Class} deck{(Config.Instance.AutoClearDeck ? " (or open an existing one to be cleared automatically)" : "")}.\n\n2) leave the deck creation screen open.\n\n3) do not move your mouse or type after clicking \"export\".";
-
-				if(deck.GetSelectedDeckVersion().Cards.Any(c => c.Name == "Stalagg" || c.Name == "Feugen"))
-				{
-					message +=
-						"\n\nIMPORTANT: If you own golden versions of Feugen or Stalagg please make sure to configure\nOptions > Other > Exporting";
-				}
-
-				var settings = new MessageDialogs.Settings {AffirmativeButtonText = "Export"};
-				var result =
-					await
-					this.ShowMessageAsync("Export " + deck.Name + " to Hearthstone", message, MessageDialogStyle.AffirmativeAndNegative, settings);
-				export = result == MessageDialogResult.Affirmative;
-			}
-			if(export)
-			{
-				var controller = await this.ShowProgressAsync("Creating Deck", "Please do not move your mouse or type.");
-				Topmost = false;
-				await Task.Delay(500);
-				await DeckExporter.Export(deck);
-				await controller.CloseAsync();
-
-				if(deck.MissingCards.Any())
-					this.ShowMissingCardsMessage(deck);
-			}
-		}
-
-		private void BtnScreenhot_Click(object sender, RoutedEventArgs e) => CaptureScreenshot(true);
-
-		private void BtnScreenhotWithInfo_Click(object sender, RoutedEventArgs e) => CaptureScreenshot(false);
-
-		private async void CaptureScreenshot(bool deckOnly)
-		{
-			var selectedDeck = DeckPickerList.SelectedDecks.FirstOrDefault();
-			if(selectedDeck == null)
-				return;
-			Log.Info("Creating screenshot of " + selectedDeck.GetSelectedDeckVersion().GetDeckInfo());
-			var screenShotWindow = new DeckScreenshotWindow(selectedDeck.GetSelectedDeckVersion(), deckOnly);
-			screenShotWindow.Show();
-			screenShotWindow.Top = 0;
-			screenShotWindow.Left = 0;
-			await Task.Delay(100);
-			var source = PresentationSource.FromVisual(screenShotWindow);
-			if(source == null)
-				return;
-
-			var deck = selectedDeck.GetSelectedDeckVersion();
-			var pngEncoder = Helper.ScreenshotDeck(screenShotWindow.StackPanelMain, 96, 96, deck.Name);
-			screenShotWindow.Close();
-			await SaveOrUploadScreenshot(pngEncoder, deck.Name);
+			DeckHistoryFlyout.Deck = deck;
+			FlyoutDeckHistory.IsOpen = true;
 		}
 
 		public async Task SaveOrUploadScreenshot(PngBitmapEncoder pngEncoder, string proposedFileName)
@@ -136,7 +94,7 @@ namespace Hearthstone_Deck_Tracker.Windows
 			}
 		}
 
-		private async void BtnSaveToFile_OnClick(object sender, RoutedEventArgs e)
+		internal async void SaveDecksToDisk(IEnumerable<Deck> decks)
 		{
 			var selectedDecks = DeckPickerList.SelectedDecks;
 			if (selectedDecks.Count > 1)
@@ -145,7 +103,7 @@ namespace Hearthstone_Deck_Tracker.Windows
 				{
 					var result = await
 						this.ShowMessageAsync("Exporting multiple decks!", $"You are about to export {selectedDecks.Count} decks. Are you sure?",
-											  MessageDialogStyle.AffirmativeAndNegative);
+											  AffirmativeAndNegative);
 					if(result != MessageDialogResult.Affirmative)
 						return;
 				}
@@ -174,78 +132,53 @@ namespace Hearthstone_Deck_Tracker.Windows
 			}
 		}
 
-		private void BtnClipboard_OnClick(object sender, RoutedEventArgs e)
+		internal void ExportIdsToClipboard(Deck deck)
 		{
-			var deck = DeckPickerList.SelectedDecks.FirstOrDefault();
 			if(deck == null)
 				return;
-			Clipboard.SetText(Helper.DeckToIdString(deck.GetSelectedDeckVersion()));
+			Clipboard.SetDataObject(Helper.DeckToIdString(deck.GetSelectedDeckVersion()));
 			this.ShowMessage("", "copied ids to clipboard").Forget();
 			Log.Info("Copied " + deck.GetSelectedDeckVersion().GetDeckInfo() + " to clipboard");
 		}
 
-		private async void BtnClipboardNames_OnClick(object sender, RoutedEventArgs e)
+		internal async void ExportCardNamesToClipboard(Deck deck)
 		{
-			var deck = DeckPickerList.SelectedDecks.FirstOrDefault();
 			if(deck == null || !deck.GetSelectedDeckVersion().Cards.Any())
-				return;
-
-			var english = true;
-			if(Config.Instance.SelectedLanguage != "enUS")
 			{
-				try
-				{
-					english = await this.ShowLanguageSelectionDialog();
-				}
-				catch(Exception ex)
-				{
-					Log.Error(ex);
-				}
+				this.ShowMessage("", LocUtil.Get("ShowMessage_CopyCardNames_NoCards")).Forget();
+				return;
 			}
+
 			try
 			{
-				var names =
-					deck.GetSelectedDeckVersion()
-					    .Cards.ToSortedCardList()
-					    .Select(c => (english ? c.Name : c.LocalizedName) + (c.Count > 1 ? " x " + c.Count : ""))
-					    .Aggregate((c, n) => c + Environment.NewLine + n);
-				Clipboard.SetText(names);
-				this.ShowMessage("", "copied names to clipboard").Forget();
-				Log.Info("Copied " + deck.GetDeckInfo() + " names to clipboard");
+				var selectedLanguage = await this.ShowSelectLanguageDialog();
+				if(!selectedLanguage.IsCanceled)
+				{
+					Enum.TryParse(selectedLanguage.SelectedLanguage, out Locale myLang);
+					var names = deck.GetSelectedDeckVersion().Cards.ToSortedCardList()
+								.Select(c => (Cards.GetFromDbfId(c.DbfIf).GetLocName(myLang)) + (c.Count > 1 ? " x " + c.Count : ""))
+								.Aggregate((c, n) => c + Environment.NewLine + n);
+
+					Clipboard.SetDataObject(names);
+					Log.Info("Copied " + deck.GetDeckInfo() + " names to clipboard");
+				}
 			}
 			catch(Exception ex)
 			{
 				Log.Error(ex);
-				this.ShowMessage("", "Error copying card names to clipboard.").Forget();
+				ErrorManager.AddError("Error copying card names", LocUtil.Get("ShowMessage_CopyCardNames_Error"));
 			}
 		}
 
-		private async void BtnExportFromWeb_Click(object sender, RoutedEventArgs e)
+		internal async void ExportDeckFromWeb()
 		{
-			var url = await InputDeckURL();
-			if(url == null)
+			var result = await ImportDeckFromUrl();
+			if(result.WasCancelled)
 				return;
-			var deck = await ImportDeckFromURL(url);
-			if(deck != null)
-				ExportDeck(deck);
+			if(result.Deck != null)
+				ShowExportFlyout(result.Deck);
 			else
-				await this.ShowMessageAsync("Error", "Could not load deck from specified url");
-		}
-
-		internal void MenuItemMissingDust_OnClick(object sender, RoutedEventArgs e)
-		{
-			var deck = DeckPickerList.SelectedDecks.FirstOrDefault();
-			if(deck == null)
-				return;
-			this.ShowMissingCardsMessage(deck);
-		}
-
-		public void BtnOpenHearthStats_Click(object sender, RoutedEventArgs e)
-		{
-			var deck = DeckPickerList.SelectedDecks.FirstOrDefault();
-			if(deck == null || !deck.HasHearthStatsId)
-				return;
-			Helper.TryOpenUrl(deck.HearthStatsUrl);
+				await this.ShowMessageAsync("No deck found", "Could not find a deck on" + Environment.NewLine + result.Url);
 		}
 	}
 }

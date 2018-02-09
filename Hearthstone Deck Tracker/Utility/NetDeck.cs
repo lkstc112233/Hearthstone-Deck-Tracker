@@ -1,10 +1,11 @@
-﻿#region
+#region
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using Hearthstone_Deck_Tracker.Importing;
 using Hearthstone_Deck_Tracker.Utility.Logging;
 
 #endregion
@@ -15,10 +16,17 @@ namespace Hearthstone_Deck_Tracker.Utility
 	{
 		public static void CheckForChromeExtention()
 		{
-			if(Config.Instance.NetDeckClipboardCheck.HasValue)
-				return;
 			var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
 									@"Google\Chrome\User Data\Default\Extensions\lpdbiakcpmcppnpchohihcbdnojlgeel");
+			if(Config.Instance.NetDeckClipboardCheck.HasValue)
+			{
+				if(Config.Instance.NetDeckClipboardCheck.Value && !Directory.Exists(path))
+				{
+					Config.Instance.NetDeckClipboardCheck = false;
+					Config.Save();
+				}
+				return;
+			}
 
 			if(Directory.Exists(path))
 			{
@@ -54,8 +62,7 @@ namespace Hearthstone_Deck_Tracker.Utility
 						if(!string.IsNullOrEmpty(arena))
 						{
 							clipboardLines.Remove(arena);
-							bool isArena;
-							if(bool.TryParse(arena.Replace("arena:", "").Trim(), out isArena))
+							if(bool.TryParse(arena.Replace("arena:", "").Trim(), out var isArena))
 								isArenaDeck = isArena;
 						}
 						var localized = false;
@@ -74,7 +81,7 @@ namespace Hearthstone_Deck_Tracker.Utility
 						}
 						clipboardLines.RemoveAt(0); //"netdeckimport" / "trackerimport"
 
-						var deck = Helper.ParseCardString(clipboardLines.Aggregate((c, n) => c + "\n" + n), localized);
+						var deck = StringImporter.Import(clipboardLines.Aggregate((c, n) => c + "\n" + n), localized);
 						if(deck != null)
 						{
 							if(tags.Any())
@@ -100,9 +107,10 @@ namespace Hearthstone_Deck_Tracker.Utility
 								deck.IsArenaDeck = isArenaDeck.Value;
 							deck.Url = url;
 							deck.Name = deckName;
-							Core.MainWindow.SetNewDeck(deck);
 							if(Config.Instance.AutoSaveOnImport)
-								Core.MainWindow.SaveDeckWithOverwriteCheck();
+								DeckManager.SaveDeck(deck);
+							else
+								Core.MainWindow.ShowDeckEditorFlyout(deck, true);
 							Core.MainWindow.ActivateWindow();
 						}
 						Clipboard.Clear();

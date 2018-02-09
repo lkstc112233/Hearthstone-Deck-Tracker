@@ -1,10 +1,13 @@
 ﻿#region
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows;
+using Point = System.Drawing.Point;
 
 #endregion
 
@@ -24,13 +27,20 @@ namespace Hearthstone_Deck_Tracker
 
 		public const int WsExTransparent = 0x00000020;
 		public const int WsExToolWindow = 0x00000080;
+		public const int WsExTopmost = 0x00000008;
 		private const int GwlExstyle = (-20);
+		private const int GwlStyle = -16;
+		private const int WsMinimize = 0x20000000;
+		private const int WsMaximize = 0x1000000;
 		public const int SwRestore = 9;
+		public const int SwShow = 5;
 		private const int Alt = 0xA4;
 		private const int ExtendedKey = 0x1;
 		private const int KeyUp = 0x2;
 		private static DateTime _lastCheck;
 		private static IntPtr _hsWindow;
+
+		private static readonly Dictionary<IntPtr, string> WindowNameCache = new Dictionary<IntPtr, string>();
 
 		private static readonly string[] WindowNames = {"Hearthstone", "하스스톤", "《爐石戰記》", "炉石传说"};
 
@@ -90,34 +100,54 @@ namespace Hearthstone_Deck_Tracker
 		[return: MarshalAs(UnmanagedType.Bool)]
 		private static extern bool GetCursorPos(out MousePoint lpPoint);
 
-		public static Point GetMousePos()
+		public static Point GetMousePos() => GetCursorPos(out var p) ? new Point(p.X, p.Y) : Point.Empty;
+
+		public static WindowState GetHearthstoneWindowState()
 		{
-			MousePoint p;
-			GetCursorPos(out p);
-			return new Point(p.X, p.Y);
+			var hsWindow = GetHearthstoneWindow();
+			var state = GetWindowLong(hsWindow, GwlStyle);
+			if((state & WsMaximize) == WsMaximize)
+				return WindowState.Maximized;
+			if((state & WsMinimize) == WsMinimize)
+				return WindowState.Minimized;
+			return WindowState.Normal;
 		}
+
+		public static bool IsTopmost(IntPtr hwnd) => (GetWindowLong(hwnd, GwlExstyle) & WsExTopmost) != 0;
 
 		public static IntPtr GetHearthstoneWindow()
 		{
 			if(DateTime.Now - _lastCheck < new TimeSpan(0, 0, 5) && _hsWindow == IntPtr.Zero)
-				return _hsWindow;
-			if(_hsWindow != IntPtr.Zero && IsWindow(_hsWindow))
-				return _hsWindow;
+				return IntPtr.Zero;
+			if(_hsWindow != IntPtr.Zero)
+			{
+				if(IsWindow(_hsWindow))
+					return _hsWindow;
+				_hsWindow = IntPtr.Zero;
+				WindowNameCache.Clear();
+			}
+
 			if(Config.Instance.UseAnyUnityWindow)
 			{
 				foreach(var process in Process.GetProcesses())
 				{
-					var sb = new StringBuilder(200);
-					GetClassName(process.MainWindowHandle, sb, 200);
-					if(!sb.ToString().Equals("UnityWndClass", StringComparison.InvariantCultureIgnoreCase))
+					var handle = process.MainWindowHandle;
+					if(!WindowNameCache.TryGetValue(handle, out var name))
+					{
+						var sb = new StringBuilder(200);
+						GetClassName(handle, sb, 200);
+						name = sb.ToString();
+						if(!string.IsNullOrEmpty(name))
+							WindowNameCache[handle] = name;
+					}
+					if(!name.Equals("UnityWndClass", StringComparison.InvariantCultureIgnoreCase))
 						continue;
-					_hsWindow = process.MainWindowHandle;
+					_hsWindow = handle;
 					_lastCheck = DateTime.Now;
 					return _hsWindow;
 				}
-
-			_lastCheck = DateTime.Now;
-			return IntPtr.Zero;
+				_lastCheck = DateTime.Now;
+				return IntPtr.Zero;
 			}
 			_hsWindow = FindWindow("UnityWndClass", Config.Instance.HearthstoneWindowName);
 			if(_hsWindow != IntPtr.Zero)
@@ -144,8 +174,7 @@ namespace Hearthstone_Deck_Tracker
 				return null;
 			try
 			{
-				uint procId;
-				GetWindowThreadProcessId(_hsWindow, out procId);
+				GetWindowThreadProcessId(_hsWindow, out uint procId);
 				return Process.GetProcessById((int)procId);
 			}
 			catch
@@ -187,6 +216,8 @@ namespace Hearthstone_Deck_Tracker
 		public static void BringHsToForeground()
 		{
 			var hsHandle = GetHearthstoneWindow();
+			if(hsHandle == IntPtr.Zero)
+				return;
 			ActivateWindow(hsHandle);
 			SetForegroundWindow(hsHandle);
 		}
@@ -201,7 +232,7 @@ namespace Hearthstone_Deck_Tracker
 				return;
 
 			// Show window maximized.
-			ShowWindow(mainWindowHandle, SwRestore);
+			ShowWindow(mainWindowHandle, GetHearthstoneWindowState() == WindowState.Minimized ? SwRestore : SwShow);
 
 			// Simulate an "ALT" key press.
 			keybd_event(Alt, 0x45, ExtendedKey | 0, 0);

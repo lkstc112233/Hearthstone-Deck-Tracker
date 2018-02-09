@@ -18,23 +18,23 @@ namespace Hearthstone_Deck_Tracker.LogReader.Interfaces
 		IGameHandler GameHandler { get; set; }
 		DateTime LastGameStart { get; set; }
 		int LastId { get; set; }
-		int MaxId { get; set; }
 		bool OpponentUsedHeroPower { get; set; }
 		bool PlayerUsedHeroPower { get; set; }
-		ReplayKeyPoint ProposedKeyPoint { get; set; }
 		bool FoundSpectatorStart { get; set; }
 		int JoustReveals { get; set; }
-		Dictionary<int, string> KnownCardIds { get; set; }
+		Dictionary<int, IList<string>> KnownCardIds { get; set; }
 		int LastCardPlayed { get; set; }
 		bool WasInProgress { get; set; }
 		bool SetupDone { get; set; }
+		int GameTriggerCount { get; set; }
 		Zone CurrentEntityZone { get; set; }
-		bool DeterminedPlayers { get; set; }
-		void ProposeKeyPoint(KeyPointType type, int id, ActivePlayer player);
+		bool DeterminedPlayers { get; }
 		int GetTurnNumber();
-		void GameEndKeyPoint(bool victory, int id);
 		void Reset();
 		void SetCurrentEntity(int id);
 		void ResetCurrentEntity();
+		void BlockStart(string type, string cardId);
+		void BlockEnd();
+		Block CurrentBlock { get; }
 	}
 }

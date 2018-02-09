@@ -1,45 +1,37 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Hearthstone_Deck_Tracker.Enums;
 using Hearthstone_Deck_Tracker.Hearthstone;
+using Hearthstone_Deck_Tracker.Utility;
 
 namespace Hearthstone_Deck_Tracker.Windows
 {
 	public partial class OverlayWindow
 	{
-		private const string DeckPanelCards = "Cards";
-		private const string DeckPanelDrawChances = "Draw Chances";
-		private const string DeckPanelCardCounter = "Card Counter";
-		private const string DeckPanelFatigueCounter = "Fatigue Counter";
-		private const string DeckPanelDeckTitle = "Deck Title";
-		private const string DeckPanelWins = "Wins";
-		private const string DeckPanelWinrate = "Win Rate";
-
 		public void UpdatePlayerLayout()
 		{
 			StackPanelPlayer.Children.Clear();
-			foreach(var item in Config.Instance.PanelOrderPlayer)
+			foreach(var item in Config.Instance.DeckPanelOrderPlayer)
 			{
 				switch(item)
 				{
-					case DeckPanelDrawChances:
+					case DeckPanel.DrawChances:
 						StackPanelPlayer.Children.Add(CanvasPlayerChance);
 						break;
-					case DeckPanelCardCounter:
+					case DeckPanel.CardCounter:
 						StackPanelPlayer.Children.Add(CanvasPlayerCount);
 						break;
-					case DeckPanelFatigueCounter:
+					case DeckPanel.Fatigue:
 						StackPanelPlayer.Children.Add(LblPlayerFatigue);
 						break;
-					case DeckPanelDeckTitle:
+					case DeckPanel.DeckTitle:
 						StackPanelPlayer.Children.Add(LblDeckTitle);
 						break;
-					case DeckPanelWins:
+					case DeckPanel.Wins:
 						StackPanelPlayer.Children.Add(LblWins);
 						break;
-					case DeckPanelCards:
+					case DeckPanel.Cards:
 						StackPanelPlayer.Children.Add(ViewBoxPlayer);
 						break;
 				}
@@ -49,23 +41,23 @@ namespace Hearthstone_Deck_Tracker.Windows
 		public void UpdateOpponentLayout()
 		{
 			StackPanelOpponent.Children.Clear();
-			foreach (var item in Config.Instance.PanelOrderOpponent)
+			foreach (var item in Config.Instance.DeckPanelOrderOpponent)
 			{
 				switch (item)
 				{
-					case DeckPanelDrawChances:
+					case DeckPanel.DrawChances:
 						StackPanelOpponent.Children.Add(CanvasOpponentChance);
 						break;
-					case DeckPanelCardCounter:
+					case DeckPanel.CardCounter:
 						StackPanelOpponent.Children.Add(CanvasOpponentCount);
 						break;
-					case DeckPanelFatigueCounter:
+					case DeckPanel.Fatigue:
 						StackPanelOpponent.Children.Add(LblOpponentFatigue);
 						break;
-					case DeckPanelWinrate:
+					case DeckPanel.Winrate:
 						StackPanelOpponent.Children.Add(LblWinRateAgainst);
 						break;
-					case DeckPanelCards:
+					case DeckPanel.Cards:
 						StackPanelOpponent.Children.Add(ViewBoxOpponent);
 						break;
 				}
@@ -98,7 +90,7 @@ namespace Hearthstone_Deck_Tracker.Windows
 
 			if (cardsLeftInDeck <= 0)
 			{
-				LblOpponentFatigue.Text = "Next draw fatigues for: " + (_game.Opponent.Fatigue + 1);
+				LblOpponentFatigue.Text = LocUtil.Get(LocFatigue) + " " + (_game.Opponent.Fatigue + 1);
 
 				LblOpponentDrawChance2.Text = "0%";
 				LblOpponentDrawChance1.Text = "0%";
@@ -129,7 +121,7 @@ namespace Hearthstone_Deck_Tracker.Windows
 
 			if (cardsLeftInDeck <= 0)
 			{
-				LblPlayerFatigue.Text = "Next draw fatigues for: " + (_game.Player.Fatigue + 1);
+				LblPlayerFatigue.Text = LocUtil.Get(LocFatigue) + " " + (_game.Player.Fatigue + 1);
 
 				LblDrawChance2.Text = "0%";
 				LblDrawChance1.Text = "0%";

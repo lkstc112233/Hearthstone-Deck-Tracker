@@ -1,11 +1,13 @@
-﻿#region
+#region
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using Hearthstone_Deck_Tracker.Controls.Error;
 using Hearthstone_Deck_Tracker.Utility.Extensions;
 
 #endregion
@@ -17,9 +19,15 @@ namespace Hearthstone_Deck_Tracker.Utility.Logging
 	{
 		private const int MaxLogFileAge = 2;
 		private const int KeepOldLogs = 25;
+		private static readonly Queue<string> LogQueue = new Queue<string>();
+		private static string _prevLine;
+		private static int _duplicateCount;
+		public static bool Initialized { get; private set; }
 
 		internal static void Initialize()
 		{
+			if(Initialized)
+				return;
 			Trace.AutoFlush = true;
 			var logDir = Path.Combine(Config.Instance.DataDir, "Logs");
 			var logFile = Path.Combine(logDir, "hdt_log.txt");
@@ -58,22 +66,23 @@ namespace Hearthstone_Deck_Tracker.Utility.Logging
 				}
 				catch(Exception)
 				{
-					try
-					{
-						var errLogFile = Path.Combine(logDir, "hdt_log_err.txt");
-						using(var writer = new StreamWriter(errLogFile, true))
-							writer.WriteLine("[{0}]: {1}", DateTime.Now.ToLongTimeString(), "Another instance of HDT is already running.");
-						MessageBox.Show("Another instance of Hearthstone Deck Tracker is already running.", "Error starting Hearthstone Deck Tracker",
-										MessageBoxButton.OK, MessageBoxImage.Error);
-					}
-					catch(Exception)
-					{
-					}
+					MessageBox.Show("Another instance of Hearthstone Deck Tracker is already running.", 
+						"Error starting Hearthstone Deck Tracker", MessageBoxButton.OK, MessageBoxImage.Error);
 					Application.Current.Shutdown();
 					return;
 				}
 			}
-			Trace.Listeners.Add(new TextWriterTraceListener(new StreamWriter(logFile, false)));
+			try
+			{
+				Trace.Listeners.Add(new TextWriterTraceListener(new StreamWriter(logFile, false)));	
+			}
+			catch (Exception ex)
+			{
+				ErrorManager.AddError("Can not access log file.", ex.ToString());
+			}
+			Initialized = true;
+			foreach(var line in LogQueue)
+				Trace.WriteLine(line);
 		}
 
 		public static void WriteLine(string msg, LogType type, [CallerMemberName] string memberName = "",
@@ -84,7 +93,27 @@ namespace Hearthstone_Deck_Tracker.Utility.Logging
 				return;
 #endif
 			var file = sourceFilePath?.Split('/', '\\').LastOrDefault()?.Split('.').FirstOrDefault();
-			Trace.WriteLine($"{DateTime.Now.ToLongTimeString()}|{type}|{file}.{memberName} >> {msg}");
+			var line = $"{type}|{file}.{memberName} >> {msg}";
+
+			if(line == _prevLine)
+				_duplicateCount++;
+			else
+			{
+				if(_duplicateCount > 0)
+					Write($"... {_duplicateCount} duplicate messages");
+				_prevLine = line;
+				_duplicateCount = 0;
+				Write(line);
+			}
+		}
+
+		private static void Write(string line)
+		{
+			line = $"{DateTime.Now.ToLongTimeString()}|{line}";
+			if(Initialized)
+				Trace.WriteLine(line);
+			else
+				LogQueue.Enqueue(line);
 		}
 
 		public static void Debug(string msg, [CallerMemberName] string memberName = "", [CallerFilePath] string sourceFilePath = "")

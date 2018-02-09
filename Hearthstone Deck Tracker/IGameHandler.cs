@@ -1,5 +1,6 @@
 #region
 
+using System;
 using HearthDb.Enums;
 using Hearthstone_Deck_Tracker.Enums;
 using Hearthstone_Deck_Tracker.Hearthstone.Entities;
@@ -20,25 +21,18 @@ namespace Hearthstone_Deck_Tracker
 		void HandlePlayerDeckDiscard(Entity entity, string cardId, int turn);
 		void HandlePlayerPlayToDeck(Entity entity, string cardId, int turn);
 		void HandlePlayerHeroPower(string cardId, int turn);
-		void SetPlayerHero(string playerHero);
+		void SetPlayerHero(string cardId);
 		void HandlePlayerGetToDeck(Entity entity, string cardId, int turn);
 		void TurnStart(ActivePlayer player, int turnNumber);
-		void HandleGameStart();
+		void HandleGameStart(DateTime startTime);
 		void HandleGameEnd();
 		void HandleLoss();
 		void HandleWin();
 		void HandleTied();
-		void ResetConstructedImporting();
-		void HandlePossibleConstructedCard(string id, bool canBeDoneImporting);
-		void HandlePossibleArenaCard(string id);
-		void SetGameMode(GameMode mode);
 		void HandleInMenu();
 		void HandleConcede();
 		void HandlePlayerFatigue(int currentDamage);
 		void HandleOpponentFatigue(int currentDamage);
-		void SetRank(int rank);
-		void HandleDustReward(int amount);
-		void HandleGoldReward(int amount);
 
 		void HandleOpponentJoust(Entity entity, string cardId, int turn);
 		void HandlePlayerPlayToGraveyard(Entity entity, string cardId, int turn);
@@ -54,6 +48,7 @@ namespace Hearthstone_Deck_Tracker
 		void HandleOpponentStolen(Entity entity, string cardId, int turn);
 		void HandlePlayerRemoveFromPlay(Entity entity, int turn);
 		void HandleOpponentRemoveFromPlay(Entity entity, int turn);
+		void HandlePlayerCreateInSetAside(Entity entity, int getTurnNumber);
 
 		#region SecretTriggers
 
@@ -62,7 +57,7 @@ namespace Hearthstone_Deck_Tracker
 		void HandlePlayerMinionPlayed();
 		void HandleOpponentMinionDeath(Entity entity, int turn);
 		void HandleOpponentDamage(Entity entity);
-		void HandleOpponentTurnStart(Entity entity);
+		void HandleTurnsInPlayChange(Entity entity, int turn);
 
 		#endregion
 
@@ -78,10 +73,13 @@ namespace Hearthstone_Deck_Tracker
 		void HandleOpponentPlayToDeck(Entity entity, string cardId, int turn);
 		void HandleOpponentSecretTrigger(Entity entity, string cardId, int turn, int otherId);
 		void HandleOpponentDeckDiscard(Entity entity, string cardId, int turn);
-		void SetOpponentHero(string hero);
+		void SetOpponentHero(string cardId);
 		void HandleOpponentHeroPower(string cardId, int turn);
 		void HandleOpponentGetToDeck(Entity entity, int turn);
+		void HandleOpponentCreateInSetAside(Entity entity, int getTurnNumber);
 
 		#endregion OpponentHandlers
+
+		void HandleEntityPredamage(Entity entity, int value);
 	}
 }

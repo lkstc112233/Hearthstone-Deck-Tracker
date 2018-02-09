@@ -6,9 +6,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using HearthDb.Enums;
+using HearthMirror.Objects;
 using Hearthstone_Deck_Tracker.Enums;
 using Hearthstone_Deck_Tracker.Enums.Hearthstone;
 using Hearthstone_Deck_Tracker.Hearthstone.Entities;
+using Hearthstone_Deck_Tracker.Hearthstone.Secrets;
 using Hearthstone_Deck_Tracker.Replay;
 using Hearthstone_Deck_Tracker.Stats;
 using Hearthstone_Deck_Tracker.Utility.Logging;
@@ -21,24 +23,19 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 {
 	public class GameV2 : IGame
 	{
-		public readonly List<Deck> IgnoredArenaDecks = new List<Deck>();
-		private bool _awaitingMainWindowOpen;
-		private GameMode _currentGameMode;
-		private bool _gameModeDetectionComplete;
-
-		private bool _gameModeDetectionRunning;
-		public Deck TempArenaDeck = new Deck();
+		public readonly List<long> IgnoredArenaDecks = new List<long>();
+		private GameMode _currentGameMode = GameMode.None;
+		private bool? _spectator;
+		private MatchInfo _matchInfo;
 		private Mode _currentMode;
+		private BrawlInfo _brawlInfo;
 
 		public GameV2()
 		{
 			Player = new Player(this, true);
 			Opponent = new Player(this, false);
-			CurrentGameMode = GameMode.None;
 			IsInMenu = true;
-			PossibleArenaCards = new List<Card>();
-			PossibleConstructedCards = new List<Card>();
-			OpponentSecrets = new OpponentSecrets(this);
+			SecretsManager = new SecretsManager(this);
 			Reset();
 		}
 
@@ -52,24 +49,32 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 
 		public int OpponentMinionCount => Entities.Count(x => (x.Value.IsInPlay && x.Value.IsMinion && x.Value.IsControlledBy(Opponent.Id)));
 		public int PlayerMinionCount => Entities.Count(x => (x.Value.IsInPlay && x.Value.IsMinion && x.Value.IsControlledBy(Player.Id)));
+		public int OpponentHandCount => Entities.Count(x => x.Value.IsInHand && x.Value.IsControlledBy(Opponent.Id));
 
 		public Player Player { get; set; }
 		public Player Opponent { get; set; }
 		public bool IsInMenu { get; set; }
 		public bool IsUsingPremade { get; set; }
-		public int OpponentSecretCount { get; set; }
 		public bool IsRunning { get; set; }
 		public Region CurrentRegion { get; set; }
 		public GameStats CurrentGameStats { get; set; }
-		public OpponentSecrets OpponentSecrets { get; set; }
+		public HearthMirror.Objects.Deck CurrentSelectedDeck { get; set; }
+		public SecretsManager SecretsManager { get; }
 		public List<Card> DrawnLastGame { get; set; }
-		public List<Card> PossibleArenaCards { get; set; }
-		public List<Card> PossibleConstructedCards { get; set; }
 		public Dictionary<int, Entity> Entities { get; } = new Dictionary<int, Entity>();
 		public GameMetaData MetaData { get; } = new GameMetaData();
-		internal List<Tuple<string, List<string>>> StoredPowerLogs { get; } = new List<Tuple<string, List<string>>>();
+		internal List<Tuple<int, List<string>>> StoredPowerLogs { get; } = new List<Tuple<int, List<string>>>();
 		internal Dictionary<int, string> StoredPlayerNames { get; } = new Dictionary<int, string>();
 		internal GameStats StoredGameStats { get; set; }
+		public int ProposedAttacker { get; set; }
+		public int ProposedDefender { get; set; }
+
+		public bool PlayerChallengeable => CurrentMode == Mode.HUB || CurrentMode == Mode.TOURNAMENT || CurrentMode == Mode.ADVENTURE
+					|| CurrentMode == Mode.TAVERN_BRAWL || CurrentMode == Mode.DRAFT || CurrentMode == Mode.PACKOPENING
+					|| CurrentMode == Mode.COLLECTIONMANAGER;
+
+		public bool? IsDungeonMatch => string.IsNullOrEmpty(CurrentGameStats?.OpponentHeroCardId) || CurrentGameType == GameType.GT_UNKNOWN ? (bool?)null
+			: CurrentGameType == GameType.GT_VS_AI && DungeonRun.IsDungeonBoss(CurrentGameStats.OpponentHeroCardId);
 
 		public Mode CurrentMode
 		{
@@ -81,18 +86,14 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 			}
 		}
 
+		private FormatType _currentFormat = FormatType.FT_UNKNOWN;
 		public Format? CurrentFormat
 		{
 			get
 			{
-				if(CurrentGameMode != GameMode.Casual && CurrentGameMode != GameMode.Ranked)
-					return null;
-				if(DeckList.Instance.ActiveDeck?.IsArenaDeck ?? false)
-					return null;
-				if(!DeckList.Instance.ActiveDeck?.StandardViable ?? false)
-					return Format.Wild;
-				return Entities.Values.Where(x => !string.IsNullOrEmpty(x?.CardId) && !x.Info.Created && !string.IsNullOrEmpty(x.Card.Set))
-							.Any(x => Helper.WildOnlySets.Contains(x.Card.Set)) ? Format.Wild : Format.Standard;
+				if(_currentFormat == FormatType.FT_UNKNOWN)
+					_currentFormat = (FormatType)HearthMirror.Reflection.GetFormat();
+				return HearthDbConverter.GetFormat(_currentFormat);
 			}
 		}
 
@@ -100,9 +101,9 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 
 		public bool SavedReplay { get; set; }
 
-		public Entity PlayerEntity => Entities.FirstOrDefault(x => x.Value.IsPlayer).Value;
+		public Entity PlayerEntity => Entities.FirstOrDefault(x => x.Value?.IsPlayer ?? false).Value;
 
-		public Entity OpponentEntity => Entities.FirstOrDefault(x => x.Value.HasTag(GameTag.PLAYER_ID) && !x.Value.IsPlayer).Value;
+		public Entity OpponentEntity => Entities.FirstOrDefault(x => x.Value != null && x.Value.HasTag(GameTag.PLAYER_ID) && !x.Value.IsPlayer).Value;
 
 		public Entity GameEntity => Entities.FirstOrDefault(x => x.Value?.Name == "GameEntity").Value;
 
@@ -119,42 +120,80 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 			}
 		}
 
+		public bool Spectator => _spectator ?? (bool)(_spectator = HearthMirror.Reflection.IsSpectating());
+
 		public GameMode CurrentGameMode
 		{
-			get { return _currentGameMode; }
-			set
+			get
 			{
-				if(_currentGameMode != value)
-				{
-					_currentGameMode = value;
-					Log.Info("Set CurrentGameMode to " + value);
-				}
+				if(Spectator)
+					return GameMode.Spectator;
+				if(_currentGameMode == GameMode.None)
+					_currentGameMode = HearthDbConverter.GetGameMode(CurrentGameType);
+				return _currentGameMode;
 			}
 		}
+
+		private GameType _currentGameType;
+		public GameType CurrentGameType => _currentGameType != GameType.GT_UNKNOWN ? _currentGameType : (_currentGameType = (GameType)HearthMirror.Reflection.GetGameType());
+
+		public MatchInfo MatchInfo => _matchInfo ?? (_matchInfo = HearthMirror.Reflection.GetMatchInfo());
+		private bool _matchInfoCacheInvalid = true;
+
+		public BrawlInfo BrawlInfo => _brawlInfo ?? (_brawlInfo = HearthMirror.Reflection.GetBrawlInfo());
+
+		internal async void CacheMatchInfo()
+		{
+			if(!_matchInfoCacheInvalid)
+				return;
+			_matchInfoCacheInvalid = false;
+			MatchInfo matchInfo;
+			while((matchInfo = HearthMirror.Reflection.GetMatchInfo()) == null || matchInfo.LocalPlayer == null || matchInfo.OpposingPlayer == null)
+				await Task.Delay(1000);
+			Log.Info($"{matchInfo.LocalPlayer.Name} vs {matchInfo.OpposingPlayer.Name}");
+			_matchInfo = matchInfo;
+			Player.Name = matchInfo.LocalPlayer.Name;
+			Opponent.Name = matchInfo.OpposingPlayer.Name;
+			Player.Id = matchInfo.LocalPlayer.Id;
+			Opponent.Id = matchInfo.OpposingPlayer.Id;
+		}
+
+		internal async void CacheGameType()
+		{
+			while((_currentGameType = (GameType)HearthMirror.Reflection.GetGameType()) == GameType.GT_UNKNOWN)
+				await Task.Delay(1000);
+		}
+
+		internal void CacheSpectator() => _spectator = HearthMirror.Reflection.IsSpectating();
+
+		internal void CacheBrawlInfo() => _brawlInfo = HearthMirror.Reflection.GetBrawlInfo();
+
+		internal void InvalidateMatchInfoCache() => _matchInfoCacheInvalid = true;
 
 		public void Reset(bool resetStats = true)
 		{
 			Log.Info("-------- Reset ---------");
 
-			ReplayMaker.Reset();
 			Player.Reset();
 			Opponent.Reset();
-
+			if(!_matchInfoCacheInvalid && MatchInfo?.LocalPlayer != null && MatchInfo.OpposingPlayer != null)
+			{
+				Player.Name = MatchInfo.LocalPlayer.Name;
+				Opponent.Name = MatchInfo.OpposingPlayer.Name;
+				Player.Id = MatchInfo.LocalPlayer.Id;
+				Opponent.Id = MatchInfo.OpposingPlayer.Id;
+			}
+			ProposedAttacker = 0;
+			ProposedDefender = 0;
 			Entities.Clear();
 			SavedReplay = false;
-			OpponentSecretCount = 0;
-			OpponentSecrets.ClearSecrets();
-
+			SecretsManager.Reset();
+			_spectator = null;
+			_currentGameMode = GameMode.None;
+			_currentGameType = GameType.GT_UNKNOWN;
+			_currentFormat = FormatType.FT_UNKNOWN;
 			if(!IsInMenu && resetStats)
-			{
-				if(CurrentGameMode == GameMode.Ranked)
-				{
-					Log.Info("Resetting gamemode to casual");
-					CurrentGameMode = GameMode.Casual;
-				}
 				CurrentGameStats = new GameStats(GameResult.None, "", "") {PlayerName = "", OpponentName = "", Region = CurrentRegion};
-				_gameModeDetectionComplete = false;
-			}
 			PowerLog.Clear();
 
 			if(Core.Game != null && Core.Overlay != null)
@@ -164,38 +203,12 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 			}
 		}
 
-		public void ResetArenaCards() => PossibleArenaCards.Clear();
-
-		public void ResetConstructedCards() => PossibleConstructedCards.Clear();
-
-		public async Task GameModeDetection(int timeoutInSeconds = 300)
-		{
-			if(_gameModeDetectionRunning || _gameModeDetectionComplete)
-			{
-				while(!_gameModeDetectionComplete)
-					await Task.Delay(100);
-				return;
-			}
-			_gameModeDetectionRunning = true;
-			var startTime = DateTime.Now;
-			var timeout = TimeSpan.FromSeconds(timeoutInSeconds);
-			while(CurrentGameMode == GameMode.None && (DateTime.Now - startTime) < timeout)
-				await Task.Delay(100);
-			if(CurrentGameStats != null && CurrentGameMode != GameMode.None)
-			{
-				CurrentGameStats.GameMode = CurrentGameMode;
-				Log.Info("Detected gamemode, set CurrentGameStats.GameMode=" + CurrentGameMode);
-			}
-			_gameModeDetectionComplete = true;
-			_gameModeDetectionRunning = false;
-		}
-
 		public void StoreGameState()
 		{
-			if(string.IsNullOrEmpty(MetaData.GameId))
+			if(MetaData.ServerInfo.GameHandle == 0)
 				return;
-			Log.Info($"Storing PowerLog for gameId={MetaData.GameId}");
-			StoredPowerLogs.Add(new Tuple<string, List<string>>(MetaData.GameId, new List<string>(PowerLog)));
+			Log.Info($"Storing PowerLog for gameId={MetaData.ServerInfo.GameHandle}");
+			StoredPowerLogs.Add(new Tuple<int, List<string>>(MetaData.ServerInfo.GameHandle, new List<string>(PowerLog)));
 			if(Player.Id != -1 && !StoredPlayerNames.ContainsKey(Player.Id))
 				StoredPlayerNames.Add(Player.Id, Player.Name);
 			if(Opponent.Id != -1 && !StoredPlayerNames.ContainsKey(Opponent.Id))
@@ -204,12 +217,7 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 				StoredGameStats = CurrentGameStats;
 		}
 
-		public string GetStoredPlayerName(int id)
-		{
-			string name;
-			StoredPlayerNames.TryGetValue(id, out name);
-			return name;
-		}
+		public string GetStoredPlayerName(int id) => StoredPlayerNames.TryGetValue(id, out var name) ? name : string.Empty;
 
 		internal void ResetStoredGameState()
 		{
@@ -218,112 +226,11 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 			StoredGameStats = null;
 		}
 
-		public void NewArenaDeck(string heroId)
+		public int GetTurnNumber()
 		{
-			TempArenaDeck = new Deck
-			{
-				IsArenaDeck = true,
-				Class = Database.GetHeroNameFromId(heroId)
-			};
-			TempArenaDeck.Name = Helper.ParseDeckNameTemplate(Config.Instance.ArenaDeckNameTemplate, TempArenaDeck);
-			Log.Info("Created new arena deck: " + TempArenaDeck.Class);
+			if (!IsMulliganDone)
+				return 0;
+			return (GameEntity?.GetTag(GameTag.TURN) + 1) / 2 ?? 0;
 		}
-
-		public void NewArenaCard(string cardId)
-		{
-			if(TempArenaDeck == null || string.IsNullOrEmpty(cardId))
-				return;
-			var existingCard = TempArenaDeck.Cards.FirstOrDefault(c => c.Id == cardId);
-			if(existingCard != null)
-				existingCard.Count++;
-			else
-				TempArenaDeck.Cards.Add((Card)Database.GetCardFromId(cardId).Clone());
-			var numCards = TempArenaDeck.Cards.Sum(c => c.Count);
-			Log.Info($"Added new card to arena deck: {cardId} ({numCards}/30)");
-			if(numCards == 30)
-			{
-				Log.Info("Found complete arena deck!");
-				if(!Config.Instance.SelectedArenaImportingBehaviour.HasValue)
-				{
-					Log.Info("...but we are using the old importing method.");
-					return;
-				}
-				var recentArenaDecks = DeckList.Instance.Decks.Where(d => d.IsArenaDeck).OrderByDescending(d => d.LastPlayedNewFirst).Take(15);
-				if(recentArenaDecks.Any(d => d.Cards.All(c => TempArenaDeck.Cards.Any(c2 => c.Id == c2.Id && c.Count == c2.Count))))
-				{
-					Log.Info("...but we already have that one. Discarding.");
-					TempArenaDeck.Cards.Clear();
-					return;
-				}
-				if(IgnoredArenaDecks.Any(d => d.Cards.All(c => TempArenaDeck.Cards.Any(c2 => c.Id == c2.Id && c.Count == c2.Count))))
-				{
-					Log.Info("...but it was already discarded by the user. No automatic action taken.");
-					return;
-				}
-				if(Config.Instance.SelectedArenaImportingBehaviour.Value == ArenaImportingBehaviour.AutoImportSave)
-				{
-					Log.Info("...auto saving new arena deck.");
-					Core.MainWindow.SetNewDeck(TempArenaDeck);
-					Core.MainWindow.SaveDeck(false, TempArenaDeck.Version);
-					TempArenaDeck.Cards.Clear();
-				}
-				else if(Config.Instance.SelectedArenaImportingBehaviour.Value == ArenaImportingBehaviour.AutoAsk)
-				{
-					ShowNewArenaDeckMessageAsync((Deck)TempArenaDeck.Clone());
-					TempArenaDeck.Cards.Clear();
-				}
-			}
-		}
-
-		private async void ShowNewArenaDeckMessageAsync(Deck deck)
-		{
-			if(_awaitingMainWindowOpen)
-				return;
-			_awaitingMainWindowOpen = true;
-
-			if(Core.MainWindow.WindowState == WindowState.Minimized)
-				Core.TrayIcon.ShowMessage("New arena deck detected!");
-
-			while(Core.MainWindow.Visibility != Visibility.Visible || Core.MainWindow.WindowState == WindowState.Minimized)
-				await Task.Delay(100);
-
-			var result =
-				await
-				Core.MainWindow.ShowMessageAsync("New arena deck detected!",
-												 "You can change this behaviour to \"auto save&import\" or \"manual\" in [options > tracker > importing]",
-												 MessageDialogStyle.AffirmativeAndNegative,
-												 new MessageDialogs.Settings {AffirmativeButtonText = "import", NegativeButtonText = "cancel"});
-
-			if(result == MessageDialogResult.Affirmative)
-			{
-				Log.Info("...saving new arena deck.");
-				Core.MainWindow.SetNewDeck(deck);
-				Core.MainWindow.ActivateWindow();
-			}
-			else
-				Log.Info("...discarded by user.");
-			IgnoredArenaDecks.Add(deck);
-			_awaitingMainWindowOpen = false;
-		}
-
-		#region Database - Obsolete
-
-		[Obsolete("Use Hearthstone.Database.GetCardFromId", true)]
-		public static Card GetCardFromId(string cardId) => Database.GetCardFromId(cardId);
-
-		[Obsolete("Use Hearthstone.Database.GetCardFromName", true)]
-		public static Card GetCardFromName(string name, bool localized = false) => Database.GetCardFromName(name, localized);
-
-		[Obsolete("Use Hearthstone.Database.GetActualCards", true)]
-		public static List<Card> GetActualCards() => Database.GetActualCards();
-
-		[Obsolete("Use Hearthstone.Database.GetHeroNameFromId", true)]
-		public static string GetHeroNameFromId(string id, bool returnIdIfNotFound = true)
-			=> Database.GetHeroNameFromId(id, returnIdIfNotFound);
-
-		[Obsolete("Use Hearthstone.Database.IsActualCard", true)]
-		public static bool IsActualCard(Card card) => Database.IsActualCard(card);
-
-		#endregion
 	}
 }

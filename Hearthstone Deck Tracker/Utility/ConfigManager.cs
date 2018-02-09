@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
 using Hearthstone_Deck_Tracker.Enums;
+using Hearthstone_Deck_Tracker.Plugins;
 using Hearthstone_Deck_Tracker.Utility.Logging;
 
 #endregion
@@ -33,8 +34,10 @@ namespace Hearthstone_Deck_Tracker.Utility
 			if(Config.Instance.SelectedTags.Count == 0)
 				Config.Instance.SelectedTags.Add("All");
 
+#if(!SQUIRREL)
 			if(!Directory.Exists(Config.Instance.DataDir))
 				Config.Instance.Reset(nameof(Config.DataDirPath));
+#endif
 		}
 
 		// Logic for dealing with legacy config file semantics
@@ -47,11 +50,10 @@ namespace Hearthstone_Deck_Tracker.Utility
 
 			if(configVersion == null) // Config was created prior to version tracking being introduced (v0.3.20)
 			{
-				Config.Instance.ResetAll();
 				Config.Instance.CreatedByVersion = currentVersion.ToString();
 				converted = true;
 			}
-			else
+			else if(currentVersion > configVersion)
 			{
 				if(configVersion <= v0_3_21)
 				{
@@ -117,50 +119,14 @@ namespace Hearthstone_Deck_Tracker.Utility
 				}
 
 
+#if(!SQUIRREL)
 				if(configVersion <= new Version(0, 5, 1, 0))
 				{
-#pragma warning disable 612
 					Config.Instance.SaveConfigInAppData = Config.Instance.SaveInAppData;
 					Config.Instance.SaveDataInAppData = Config.Instance.SaveInAppData;
 					converted = true;
-#pragma warning restore 612
 				}
-				if(configVersion <= new Version(0, 6, 6, 0))
-				{
-					if(Config.Instance.ExportClearX == 0.86)
-					{
-						Config.Instance.Reset(nameof(Config.ExportClearX));
-						converted = true;
-					}
-					if(Config.Instance.ExportClearY == 0.16)
-					{
-						Config.Instance.Reset(nameof(Config.ExportClearY));
-						converted = true;
-					}
-					if(Config.Instance.ExportClearCheckYFixed == 0.2)
-					{
-						Config.Instance.Reset(nameof(Config.ExportClearCheckYFixed));
-						converted = true;
-					}
-				}
-				if(configVersion <= new Version(0, 7, 6, 0))
-				{
-					if(Config.Instance.ExportCard1X != 0.04)
-					{
-						Config.Instance.Reset(nameof(Config.ExportCard1X));
-						converted = true;
-					}
-					if(Config.Instance.ExportCard2X != 0.2)
-					{
-						Config.Instance.Reset(nameof(Config.ExportCard2X));
-						converted = true;
-					}
-					if(Config.Instance.ExportCardsY != 0.168)
-					{
-						Config.Instance.Reset(nameof(Config.ExportCardsY));
-						converted = true;
-					}
-				}
+#endif
 				if(configVersion <= new Version(0, 9, 6, 0))
 				{
 					if(!Config.Instance.PanelOrderPlayer.Contains("Fatigue Counter"))
@@ -201,8 +167,7 @@ namespace Hearthstone_Deck_Tracker.Utility
 				}
 				if(configVersion <= new Version(0, 13, 16, 0))
 				{
-					MetroTheme theme;
-					if(Enum.TryParse(Config.Instance.ThemeName, out theme))
+					if(Enum.TryParse(Config.Instance.ThemeName, out MetroTheme theme))
 					{
 						Config.Instance.AppTheme = theme;
 						converted = true;
@@ -222,6 +187,118 @@ namespace Hearthstone_Deck_Tracker.Utility
 						Config.Instance.Reset(nameof(Config.PlayerDeckTop));
 						converted = true;
 					}
+				}
+				if(configVersion <= new Version(0, 14, 7, 0))
+				{
+					if(File.Exists("Version.xml"))
+					{
+						try
+						{
+							File.Delete("Version.xml");
+						}
+						catch(Exception e)
+						{
+							Log.Error(e);
+						}
+					}
+				}
+				if(configVersion <= new Version(0, 14, 9, 0))
+				{
+					Config.Instance.ConstructedAutoImportNew = false;
+					Config.Instance.ConstructedAutoUpdate = false;
+					converted = true;
+				}
+				if(configVersion <= new Version(0, 15, 13, 0))
+				{
+					var targetDir = PluginManager.PluginDirectory;
+					var sourceDir = PluginManager.LocalPluginDirectory;
+					if(sourceDir.Exists)
+					{
+						if(targetDir.Exists)
+						{
+							try
+							{
+								targetDir.Delete(true);
+							}
+							catch(Exception ex)
+							{
+								Log.Error(ex);
+							}
+						}
+						try
+						{
+							targetDir.Create();
+							Helper.CopyFolder(sourceDir.FullName, targetDir.FullName);
+						}
+						catch(Exception ex)
+						{
+							Log.Error(ex);
+						}
+					}
+
+					var bars = new[] { "classic", "dark", "frost", "minimal" };
+					var overlays = new[] { "classic", "default", "frost" };
+					try
+					{
+						foreach(var folder in new DirectoryInfo("Images\\Themes\\Bars").GetDirectories().Where(x => !bars.Contains(x.Name)))
+						{
+							try
+							{
+								Helper.CopyFolder(folder.FullName, Path.Combine(Config.AppDataPath, "Themes\\Bars", folder.Name));
+								folder.Delete(true);
+							}
+							catch(Exception ex)
+							{
+								Log.Error(ex);
+							}
+						}
+
+						foreach(var folder in new DirectoryInfo("Images\\Themes\\Overlay").GetDirectories().Where(x => !overlays.Contains(x.Name)))
+						{
+							try
+							{
+								Helper.CopyFolder(folder.FullName, Path.Combine(Config.AppDataPath, "Themes\\Overlay", folder.Name));
+								folder.Delete(true);
+							}
+							catch(Exception ex)
+							{
+								Log.Error(ex);
+							}
+						}
+					}
+					catch(Exception ex)
+					{
+						Log.Error(ex);
+					}
+				}
+				if(configVersion == new Version(0, 15, 9, 0))
+					DataIssueResolver.RunDeckStatsFix = true;
+				if(configVersion <= new Version(1, 0, 5, 29))
+				{
+					var convert = new Func<string, DeckPanel?>(panel =>
+					{
+						switch(panel)
+						{
+							case "Win Rate":
+								return DeckPanel.Winrate;
+							case "Cards":
+								return DeckPanel.Cards;
+							case "Card Counter":
+								return DeckPanel.CardCounter;
+							case "Draw Chances":
+								return DeckPanel.DrawChances;
+							case "Fatigue Counter":
+								return DeckPanel.Fatigue;
+							case "Deck Title":
+								return DeckPanel.DeckTitle;
+							case "Wins":
+								return DeckPanel.Wins;
+						}
+						return null;
+					});
+					Config.Instance.DeckPanelOrderPlayer = Config.Instance.PanelOrderPlayer.Select(convert).Where(x => x.HasValue).Select(x => x.Value).ToArray();
+					Config.Instance.DeckPanelOrderOpponent = Config.Instance.PanelOrderOpponent.Select(convert).Where(x => x.HasValue).Select(x => x.Value).ToArray();
+					converted = true;
 				}
 			}
 

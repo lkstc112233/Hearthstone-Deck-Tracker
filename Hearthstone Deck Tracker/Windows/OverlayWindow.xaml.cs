@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System;
 using System.Collections.Generic;
@@ -28,9 +28,7 @@ namespace Hearthstone_Deck_Tracker.Windows
 	// ReSharper disable once RedundantExtendsListEntry
 	public partial class OverlayWindow : Window, INotifyPropertyChanged
 	{
-		private const double RankCoveredMaxLeft = 0.1;
-		private const double PlayerRankCoveredMaxHeight = 0.8;
-		private const double OpponentRankCoveredMaxTop = 0.12;
+		private const string LocFatigue = "Overlay_DeckList_Label_Fatigue";
 		private const int ChancePanelsMargins = 8;
 		private readonly Point[][] _cardMarkPos = new Point[MaxHandSize][];
 		private readonly List<CardMarker> _cardMarks = new List<CardMarker>();
@@ -127,6 +125,8 @@ namespace Hearthstone_Deck_Tracker.Windows
 
 		private void SetRect(int top, int left, int width, int height)
 		{
+			if(width < 0 || height < 0)
+				return;
 			Top = top + _offsetY;
 			Left = left + _offsetX;
 			Width = (_customWidth == -1) ? width : _customWidth;
@@ -150,19 +150,19 @@ namespace Hearthstone_Deck_Tracker.Windows
 				LblPlayerTurnTime.Visibility =
 				LblOpponentTurnTime.Visibility = LblTurnTime.Visibility = Config.Instance.HideTimers ? Hidden : Visible;
 
-		public void ShowSecrets(bool force = false, HeroClass? heroClass = null)
+		public void ShowSecrets(List<Card> secrets, bool force = false)
 		{
 			if(Config.Instance.HideSecrets && !force)
 				return;
 
 			StackPanelSecrets.Children.Clear();
-			var secrets = heroClass == null ? _game.OpponentSecrets.GetSecrets() : _game.OpponentSecrets.GetDefaultSecrets(heroClass.Value);
-			foreach(var id in secrets)
+
+			foreach(var secret in secrets)
 			{
+				if(secret.Count <= 0 && Config.Instance.RemoveSecretsFromList)
+					continue;
 				var cardObj = new Controls.Card();
-				var card = Database.GetCardFromId(id.CardId);
-				card.Count = id.AdjustedCount(_game);
-				cardObj.SetValue(DataContextProperty, card);
+				cardObj.SetValue(DataContextProperty, secret);
 				StackPanelSecrets.Children.Add(cardObj);
 			}
 
@@ -170,6 +170,7 @@ namespace Hearthstone_Deck_Tracker.Windows
 		}
 
 		public void HideSecrets() => StackPanelSecrets.Visibility = Collapsed;
+		public void UnhideSecrects() => StackPanelSecrets.Visibility = Visible;
 
 		private void Window_Closing(object sender, CancelEventArgs e)
 		{
@@ -191,42 +192,6 @@ namespace Hearthstone_Deck_Tracker.Windows
 		{
 			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 		}
-
-		public bool IsRankConvered(bool requireOpponentRank = false)
-		{
-			if(Canvas.GetLeft(StackPanelPlayer) < RankCoveredMaxLeft * Width)
-			{
-				if(Canvas.GetTop(StackPanelPlayer) + StackPanelPlayer.ActualHeight > PlayerRankCoveredMaxHeight * Height)
-				{
-					Log.Info("Player rank is potentially covered by player deck.");
-					return true;
-				}
-				if(Canvas.GetTop(StackPanelPlayer) < OpponentRankCoveredMaxTop * Height)
-				{
-					Log.Info("Opponent rank is potentially covered by player deck.");
-					if(requireOpponentRank)
-						return true;
-				}
-			}
-			if(Canvas.GetLeft(StackPanelOpponent) < RankCoveredMaxLeft * Width)
-			{
-				if(Canvas.GetTop(StackPanelOpponent) + StackPanelOpponent.ActualHeight > PlayerRankCoveredMaxHeight * Height)
-				{
-					Log.Info("Player rank is potentially covered by opponent deck.");
-					return true;
-				}
-				if(Canvas.GetTop(StackPanelOpponent) < OpponentRankCoveredMaxTop * Height)
-				{
-					Log.Info("Opponent rank is potentially covered by opponent deck.");
-					if(requireOpponentRank)
-						return true;
-				}
-			}
-			Log.Info("No ranks should be covered by any decks.");
-			return false;
-		}
-
-		public void ShowFriendsListWarning(bool show) => StackPanelFriendsListWarning.Visibility = show ? Visible : Collapsed;
 
 		public void ShowRestartRequiredWarning() => TextBlockRestartWarning.Visibility = Visible;
 

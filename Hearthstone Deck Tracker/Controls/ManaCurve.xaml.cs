@@ -1,11 +1,13 @@
-﻿#region
+#region
 
 using System;
 using System.Linq;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Hearthstone_Deck_Tracker.Enums;
 using Hearthstone_Deck_Tracker.Hearthstone;
+using Hearthstone_Deck_Tracker.Utility;
 using static System.Windows.Visibility;
 using static Hearthstone_Deck_Tracker.Enums.StatType;
 
@@ -22,6 +24,9 @@ namespace Hearthstone_Deck_Tracker
 		private const string Enchantment = "Enchantment";
 		private const string Spell = "Spell";
 		private const string Minion = "Minion";
+		private const string Hero = "Hero";
+		private const string LocMechanics = "ManaCurve_Button_Mechanics";
+		private const string LocHide = "ManaCurve_Button_Hide";
 		private readonly ManaCostBar[] _manaCostBars;
 		private Deck _deck;
 
@@ -53,6 +58,11 @@ namespace Hearthstone_Deck_Tracker
 				TextBlockNoMechanics.Visibility = Visible;
 				return;
 			}
+			if(deck.Equals(_deck))
+			{
+				UpdateValues();
+				return;
+			}
 			_deck = deck;
 			deck.GetSelectedDeckVersion().Cards.CollectionChanged += (sender, args) => UpdateValues();
 			UpdateValues();
@@ -65,8 +75,8 @@ namespace Hearthstone_Deck_Tracker
 			_deck = null;
 			for(var i = 0; i < 8; i++)
 			{
-				_manaCostBars[i].SetValues(0, 0, 0, 0);
-				_manaCostBars[i].SetTooltipValues(0, 0, 0);
+				_manaCostBars[i].SetValues(0, 0, 0, 0, 0);
+				_manaCostBars[i].SetTooltipValues(0, 0, 0, 0);
 			}
 		}
 
@@ -79,6 +89,7 @@ namespace Hearthstone_Deck_Tracker
 			var weapons = new int[8];
 			var spells = new int[8];
 			var minions = new int[8];
+			var heroes = new int[8];
 			foreach(var card in _deck.GetSelectedDeckVersion().Cards)
 			{
 				var statValue = -1;
@@ -113,6 +124,9 @@ namespace Hearthstone_Deck_Tracker
 						case Minion:
 							minions[7] += card.Count;
 							break;
+						case Hero:
+							heroes[7] += card.Count;
+							break;
 					}
 					counts[7] += card.Count;
 				}
@@ -132,6 +146,9 @@ namespace Hearthstone_Deck_Tracker
 							case Minion:
 								minions[statValue] += card.Count;
 								break;
+							case Hero:
+								heroes[statValue] += card.Count;
+								break;
 						}
 						counts[statValue] += card.Count;
 					}
@@ -145,7 +162,7 @@ namespace Hearthstone_Deck_Tracker
 			var max = 0;
 			for(var i = 0; i < 8; i++)
 			{
-				var sum = weapons[i] + spells[i] + minions[i];
+				var sum = weapons[i] + spells[i] + minions[i] + heroes[i];
 				if(sum > max)
 					max = sum;
 			}
@@ -154,15 +171,16 @@ namespace Hearthstone_Deck_Tracker
 			{
 				if(max == 0)
 				{
-					_manaCostBars[i].SetValues(0, 0, 0, 0);
-					_manaCostBars[i].SetTooltipValues(0, 0, 0);
+					_manaCostBars[i].SetValues(0, 0, 0, 0, 0);
+					_manaCostBars[i].SetTooltipValues(0, 0, 0, 0);
 				}
 				else
 				{
-					_manaCostBars[i].SetValues(100d * weapons[i] / max, 100d * spells[i] / max, 100d * minions[i] / max, counts[i]);
-					_manaCostBars[i].SetTooltipValues(weapons[i], spells[i], minions[i]);
+					_manaCostBars[i].SetValues(100d * weapons[i] / max, 100d * spells[i] / max, 100d * minions[i] / max, 100d * heroes[i] / max, counts[i]);
+					_manaCostBars[i].SetTooltipValues(weapons[i], spells[i], minions[i], heroes[i]);
 				}
 			}
+			ItemsControlMechanics.ItemsSource = _deck.Mechanics;
 		}
 
 		private void ComboBoxStatType_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -184,12 +202,12 @@ namespace Hearthstone_Deck_Tracker
 			if(BorderMechanics.Visibility != Visible)
 			{
 				BorderMechanics.Visibility = Visible;
-				TextBlockManaCurveMechanics.Text = "HIDE";
+				TextBlockManaCurveMechanics.Text = LocUtil.Get(LocHide, true);
 			}
 			else
 			{
 				BorderMechanics.Visibility = Collapsed;
-				TextBlockManaCurveMechanics.Text = "MECHANICS";
+				TextBlockManaCurveMechanics.Text = LocUtil.Get(LocMechanics, true);
 			}
 			TextBlockNoMechanics.Visibility = _deck != null && _deck.Mechanics.Any() ? Collapsed : Visible;
 		}
@@ -199,6 +217,6 @@ namespace Hearthstone_Deck_Tracker
 	{
 		public StatType StatType { get; set; }
 
-		public string DisplayName => StatType.ToString().ToUpper();
+		public string DisplayName => EnumDescriptionConverter.GetDescription(StatType);
 	}
 }
